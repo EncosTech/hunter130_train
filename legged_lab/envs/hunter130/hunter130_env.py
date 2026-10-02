@@ -5,22 +5,23 @@ import isaacsim.core.utils.torch as torch_utils  # type: ignore
 import numpy as np
 import torch
 from isaaclab.assets.articulation import Articulation
-from isaaclab.envs.mdp.commands import UniformVelocityCommand, UniformVelocityCommandCfg
+from isaaclab.envs.mdp.commands import UniformVelocityCommandCfg
 from isaaclab.managers import EventManager, RewardManager
 from isaaclab.managers.scene_entity_cfg import SceneEntityCfg
 from isaaclab.scene import InteractiveScene
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim import PhysxCfg, SimulationContext
 from isaaclab.utils.buffers import CircularBuffer, DelayBuffer
-from isaaclab.utils.math import quat_apply, quat_conjugate
+from isaaclab.utils.math import quat_apply, quat_conjugate, quat_apply_inverse, yaw_quat
 
-from legged_lab.envs.encos130.walk_cfg import Encos130WalkFlatEnvCfg
+from legged_lab.envs.hunter130.commands import TorsoVelocityCommand
+from legged_lab.envs.hunter130.walk_cfg import Hunter130WalkFlatEnvCfg
 from legged_lab.utils.env_utils.scene import SceneCfg
 from rsl_rl.env import VecEnv
 
 
-class Encos130Env(VecEnv):
-    def __init__(self, cfg: Encos130WalkFlatEnvCfg, headless):
+class Hunter130Env(VecEnv):
+    def __init__(self, cfg: Hunter130WalkFlatEnvCfg, headless):
         self.cfg = cfg
         self.headless = headless
         self.device = self.cfg.device
@@ -48,13 +49,13 @@ class Encos130Env(VecEnv):
         scene_cfg.terrain.visual_material = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.35, 0.35, 0.35))
         scene_cfg.sky_light.spawn.texture_file = None
 
-        print("[Encos130] Creating scene and importing robot...", flush=True)
+        print("[Hunter130] Creating scene and importing robot...", flush=True)
         faulthandler.dump_traceback_later(60, repeat=True)
         try:
             self.scene = InteractiveScene(scene_cfg)
-            print("[Encos130] Scene created. Initializing physics...", flush=True)
+            print("[Hunter130] Scene created. Initializing physics...", flush=True)
             self.sim.reset()
-            print("[Encos130] Physics initialized.", flush=True)
+            print("[Hunter130] Physics initialized.", flush=True)
         finally:
             faulthandler.cancel_dump_traceback_later()
 
@@ -74,7 +75,8 @@ class Encos130Env(VecEnv):
             debug_vis=self.cfg.commands.debug_vis,
             ranges=self.cfg.commands.ranges,
         )
-        self.command_generator = UniformVelocityCommand(cfg=command_cfg, env=self)
+        self.torso_body_id = self.robot.find_bodies("torso_link")[0][0]
+        self.command_generator = TorsoVelocityCommand(cfg=command_cfg, env=self)
         self.reward_manager = RewardManager(self.cfg.reward, self)
 
         self.init_buffers()
@@ -128,14 +130,14 @@ class Encos130Env(VecEnv):
         self.feet_cfg = SceneEntityCfg(name="contact_sensor", body_names=self.cfg.robot.feet_body_names)
         self.feet_cfg.resolve(self.scene)
 
-        # encos130 body/joint naming
+        # hunter130 body/joint naming
         self.feet_body_ids, _ = self.robot.find_bodies(
             name_keys=["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True
         )
         self.elbow_body_ids, _ = self.robot.find_bodies(
             name_keys=["left_elbow_link", "right_elbow_link"], preserve_order=True
         )
-        # encos130 joint order: hip_pitch, hip_roll, hip_yaw, knee, ankle_pitch, ankle_roll
+        # hunter130 joint order: hip_pitch, hip_roll, hip_yaw, knee, ankle_pitch, ankle_roll
         self.left_leg_ids, _ = self.robot.find_joints(
             name_keys=[
                 "left_hip_pitch_joint",
@@ -202,12 +204,13 @@ class Encos130Env(VecEnv):
         self.right_arm_local_vec = torch.tensor([0.0, 0.0, -0.13015], device=self.device).repeat((self.num_envs, 1))
 
         # Init gait parameter
+        self.gait_progress = torch.zeros(self.num_envs, device=self.device)
         self.gait_phase = torch.zeros(self.num_envs, 2, dtype=torch.float, device=self.device, requires_grad=False)
         self.gait_cycle = torch.full(
-            (self.num_envs,), self.cfg.gait.gait_cycle, dtype=torch.float, device=self.device, requires_grad=False
+            (self.num_envs,), self.cfg.gait.cycle_range[0], dtype=torch.float, device=self.device, requires_grad=False
         )
         self.phase_ratio = torch.tensor(
-            [self.cfg.gait.gait_air_ratio_l, self.cfg.gait.gait_air_ratio_r], dtype=torch.float, device=self.device
+            [self.cfg.gait.air_ratio_range[0], self.cfg.gait.air_ratio_range[0]], dtype=torch.float, device=self.device
         ).repeat(self.num_envs, 1)
         self.phase_offset = torch.tensor(
             [self.cfg.gait.gait_phase_offset_l, self.cfg.gait.gait_phase_offset_r],
@@ -229,13 +232,15 @@ class Encos130Env(VecEnv):
         robot = self.robot
         net_contact_forces = self.contact_sensor.data.net_forces_w_history
 
+        torso_quat = robot.data.body_quat_w[:, self.torso_body_id]
+        # The physical IMU is fixed to root; keep actor proprioception in that frame.
         ang_vel = robot.data.root_ang_vel_b
         projected_gravity = robot.data.projected_gravity_b
         command = self.command_generator.command
         joint_pos = robot.data.joint_pos - robot.data.default_joint_pos
         joint_vel = robot.data.joint_vel - robot.data.default_joint_vel
         action = self.action_buffer._circular_buffer.buffer[:, -1, :]
-        root_lin_vel = robot.data.root_lin_vel_b
+        root_lin_vel = quat_apply_inverse(yaw_quat(torso_quat), robot.data.root_lin_vel_w)
         feet_contact = torch.max(torch.norm(net_contact_forces[:, :, self.feet_cfg.body_ids], dim=-1), dim=1)[0] > 0.5
 
         current_actor_obs = torch.cat(
@@ -315,7 +320,7 @@ class Encos130Env(VecEnv):
         self.critic_obs_buffer.reset(env_ids)
         self.action_buffer.reset(env_ids)
         self.episode_length_buf[env_ids] = 0
-        self._calculate_gait_para()
+        self._calculate_gait_para(env_ids)
 
         self.scene.write_data_to_sim()
         self.sim.forward()
@@ -351,9 +356,8 @@ class Encos130Env(VecEnv):
             self.sim.render()
 
         self.episode_length_buf += 1
-        self._calculate_gait_para()
-
         self.command_generator.compute(self.step_dt)
+        self._calculate_gait_para()
         if "interval" in self.event_manager.available_modes:
             self.event_manager.apply(mode="interval", dt=self.step_dt)
 
@@ -437,7 +441,7 @@ class Encos130Env(VecEnv):
     def visualize_motion(self, time):
         """Set robot state from AMP motion frame at given time for visualization.
 
-        encos130 frame layout (58):
+        hunter130 frame layout (58):
             [root_pos(3), root_rot(3), L_leg(6), R_leg(6), waist(3), L_arm(4), R_arm(4),
              root_lin_vel(3), root_ang_vel(3), L_leg_vel(6), R_leg_vel(6), waist_vel(3), L_arm_vel(4), R_arm_vel(4)]
         """
@@ -606,10 +610,26 @@ class Encos130Env(VecEnv):
             pass
         return torch_utils.set_seed(seed)
 
-    def _calculate_gait_para(self) -> None:
+    def _calculate_gait_para(self, env_ids=None) -> None:
+        """Smooth speed-dependent gait; integrate phase so speed changes never jump it.
+
+        Reset only selected environments and do not advance any clock during reset.
         """
-        Update gait phase parameters based on simulation time and offset.
-        """
-        t = self.episode_length_buf * self.step_dt / self.gait_cycle
-        self.gait_phase[:, 0] = (t + self.phase_offset[:, 0]) % 1.0
-        self.gait_phase[:, 1] = (t + self.phase_offset[:, 1]) % 1.0
+        ids = slice(None) if env_ids is None else env_ids
+        command = self.command_generator.command[ids]
+        cfg = self.cfg.gait
+        speed = torch.linalg.vector_norm(command[:, :2], dim=1) + cfg.turn_radius * command[:, 2].abs()
+        blend = ((speed - cfg.speed_range[0]) / (cfg.speed_range[1] - cfg.speed_range[0])).clamp(0.0, 1.0)
+        cycle = cfg.cycle_range[0] + blend * (cfg.cycle_range[1] - cfg.cycle_range[0])
+        ratio = cfg.air_ratio_range[0] + blend * (cfg.air_ratio_range[1] - cfg.air_ratio_range[0])
+        if env_ids is not None:
+            self.gait_progress[ids] = 0.0
+            self.gait_cycle[ids] = cycle
+            self.phase_ratio[ids] = ratio[:, None]
+        else:
+            alpha = 1.0 - np.exp(-self.step_dt / cfg.smoothing_time)
+            self.gait_cycle.lerp_(cycle, alpha)
+            self.phase_ratio.lerp_(ratio[:, None].expand_as(self.phase_ratio), alpha)
+            walking = (torch.linalg.vector_norm(command[:, :2], dim=1) + command[:, 2].abs()) >= 0.1
+            self.gait_progress[:] = (self.gait_progress + walking * self.step_dt / self.gait_cycle) % 1.0
+        self.gait_phase[ids] = (self.gait_progress[ids, None] + self.phase_offset[ids]) % 1.0

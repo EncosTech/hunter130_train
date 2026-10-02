@@ -28,11 +28,11 @@ from isaaclab.sensors import ContactSensor
 
 if TYPE_CHECKING:
     from legged_lab.envs.base.base_env import BaseEnv
-    from legged_lab.envs.encos130.encos130_env import Encos130Env
+    from legged_lab.envs.hunter130.hunter130_env import Hunter130Env
 
 
 def track_lin_vel_xy_yaw_frame_exp(
-    env: BaseEnv | Encos130Env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: BaseEnv | Hunter130Env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     vel_yaw = math_utils.quat_apply_inverse(
@@ -43,35 +43,35 @@ def track_lin_vel_xy_yaw_frame_exp(
 
 
 def track_ang_vel_z_world_exp(
-    env: BaseEnv | Encos130Env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: BaseEnv | Hunter130Env, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_generator.command[:, 2] - asset.data.root_ang_vel_w[:, 2])
     return torch.exp(-ang_vel_error / std**2)
 
 
-def lin_vel_z_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def lin_vel_z_l2(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.square(asset.data.root_lin_vel_b[:, 2])
 
 
-def ang_vel_xy_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def ang_vel_xy_l2(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
 
 
-def energy(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def energy(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     reward = torch.norm(torch.abs(asset.data.applied_torque * asset.data.joint_vel), dim=-1)
     return reward
 
 
-def joint_acc_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def joint_acc_l2(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.joint_acc[:, asset_cfg.joint_ids]), dim=1)
 
 
-def action_rate_l2(env: BaseEnv | Encos130Env) -> torch.Tensor:
+def action_rate_l2(env: BaseEnv | Hunter130Env) -> torch.Tensor:
     return torch.sum(
         torch.square(
             env.action_buffer._circular_buffer.buffer[:, -1, :] - env.action_buffer._circular_buffer.buffer[:, -2, :]
@@ -80,14 +80,14 @@ def action_rate_l2(env: BaseEnv | Encos130Env) -> torch.Tensor:
     )
 
 
-def undesired_contacts(env: BaseEnv | Encos130Env, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def undesired_contacts(env: BaseEnv | Hunter130Env, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     net_contact_forces = contact_sensor.data.net_forces_w_history
     is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
     return torch.sum(is_contact, dim=1)
 
 
-def fly(env: BaseEnv | Encos130Env, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def fly(env: BaseEnv | Hunter130Env, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     net_contact_forces = contact_sensor.data.net_forces_w_history
     is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
@@ -95,19 +95,19 @@ def fly(env: BaseEnv | Encos130Env, threshold: float, sensor_cfg: SceneEntityCfg
 
 
 def flat_orientation_l2(
-    env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 
-def is_terminated(env: BaseEnv | Encos130Env) -> torch.Tensor:
+def is_terminated(env: BaseEnv | Hunter130Env) -> torch.Tensor:
     """Penalize terminated episodes that don't correspond to episodic timeouts."""
     return env.reset_buf * ~env.time_out_buf
 
 
 def feet_air_time_positive_biped(
-    env: BaseEnv | Encos130Env, threshold: float, sensor_cfg: SceneEntityCfg
+    env: BaseEnv | Hunter130Env, threshold: float, sensor_cfg: SceneEntityCfg
 ) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
@@ -125,7 +125,7 @@ def feet_air_time_positive_biped(
 
 
 def feet_slide(
-    env: BaseEnv | Encos130Env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: BaseEnv | Hunter130Env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     contacts = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0] > 1.0
@@ -136,7 +136,7 @@ def feet_slide(
 
 
 def body_force(
-    env: BaseEnv | Encos130Env, sensor_cfg: SceneEntityCfg, threshold: float = 500, max_reward: float = 400
+    env: BaseEnv | Hunter130Env, sensor_cfg: SceneEntityCfg, threshold: float = 500, max_reward: float = 400
 ) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     reward = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2].norm(dim=-1)
@@ -144,7 +144,7 @@ def body_force(
     return reward
 
 
-def joint_deviation_l1(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def joint_deviation_l1(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     angle = asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
     zero_flag = (
@@ -154,7 +154,7 @@ def joint_deviation_l1(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = S
 
 
 def body_orientation_l2(
-    env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     body_orientation = math_utils.quat_apply_inverse(
@@ -163,7 +163,7 @@ def body_orientation_l2(
     return torch.sum(torch.square(body_orientation[:, :2]), dim=1)
 
 
-def feet_stumble(env: BaseEnv | Encos130Env, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def feet_stumble(env: BaseEnv | Hunter130Env, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     return torch.any(
         torch.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
@@ -173,7 +173,7 @@ def feet_stumble(env: BaseEnv | Encos130Env, sensor_cfg: SceneEntityCfg) -> torc
 
 
 def feet_too_near_humanoid(
-    env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), threshold: float = 0.2
+    env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), threshold: float = 0.2
 ) -> torch.Tensor:
     assert len(asset_cfg.body_ids) == 2
     asset: Articulation = env.scene[asset_cfg.name]
@@ -183,35 +183,33 @@ def feet_too_near_humanoid(
 
 
 # Regularization Reward
-def ankle_torque(env: Encos130Env) -> torch.Tensor:
+def ankle_torque(env: Hunter130Env) -> torch.Tensor:
     """Penalize large torques on the ankle joints."""
     return torch.sum(torch.square(env.robot.data.applied_torque[:, env.ankle_joint_ids]), dim=1)
 
 
-def ankle_action(env: Encos130Env) -> torch.Tensor:
+def ankle_action(env: Hunter130Env) -> torch.Tensor:
     """Penalize ankle joint actions."""
     return torch.sum(torch.abs(env.action[:, env.ankle_joint_ids]), dim=1)
 
 
-def hip_roll_action(env: Encos130Env, leg_joint_index: int = 0) -> torch.Tensor:
+def hip_roll_action(env: Hunter130Env, leg_joint_index: int = 0) -> torch.Tensor:
     """Penalize hip roll joint actions."""
     return torch.sum(torch.abs(env.action[:, [env.left_leg_ids[leg_joint_index], env.right_leg_ids[leg_joint_index]]]), dim=1)
 
 
-def hip_yaw_action(env: Encos130Env) -> torch.Tensor:
+def hip_yaw_action(env: Hunter130Env) -> torch.Tensor:
     """Penalize hip yaw joint actions."""
     return torch.sum(torch.abs(env.action[:, [env.left_leg_ids[2], env.right_leg_ids[2]]]), dim=1)
 
 
-def feet_y_distance(env: Encos130Env, target_distance: float = 0.299) -> torch.Tensor:
+def feet_y_distance(env: Hunter130Env, target_distance: float = 0.299) -> torch.Tensor:
     """Penalize foot y-distance when the commanded y-velocity is low, to maintain a reasonable spacing."""
-    leftfoot = env.robot.data.body_pos_w[:, env.feet_body_ids[0], :] - env.robot.data.root_link_pos_w[:, :]
-    rightfoot = env.robot.data.body_pos_w[:, env.feet_body_ids[1], :] - env.robot.data.root_link_pos_w[:, :]
-    leftfoot_b = math_utils.quat_apply(math_utils.quat_conjugate(env.robot.data.root_link_quat_w[:, :]), leftfoot)
-    rightfoot_b = math_utils.quat_apply(math_utils.quat_conjugate(env.robot.data.root_link_quat_w[:, :]), rightfoot)
-    y_distance_b = torch.abs(leftfoot_b[:, 1] - rightfoot_b[:, 1] - target_distance)
+    delta = env.robot.data.body_pos_w[:, env.feet_body_ids[0]] - env.robot.data.body_pos_w[:, env.feet_body_ids[1]]
+    torso_yaw = math_utils.yaw_quat(env.robot.data.body_quat_w[:, env.torso_body_id])
+    width = math_utils.quat_apply_inverse(torso_yaw, delta)[:, 1]
     y_vel_flag = torch.abs(env.command_generator.command[:, 1]) < 0.1
-    return y_distance_b * y_vel_flag
+    return torch.abs(width - target_distance) * y_vel_flag
 
 
 # Periodic gait-based reward function
@@ -265,7 +263,7 @@ def gait_clock(phase, air_ratio, delta_t):
     return I_frc, I_spd
 
 
-def gait_feet_frc_perio(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_frc_perio(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Penalize foot force during the swing phase of the gait."""
     left_frc_swing_mask = gait_clock(env.gait_phase[:, 0], env.phase_ratio[:, 0], delta_t)[0]
     right_frc_swing_mask = gait_clock(env.gait_phase[:, 1], env.phase_ratio[:, 1], delta_t)[0]
@@ -274,7 +272,7 @@ def gait_feet_frc_perio(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor
     return left_frc_score + right_frc_score
 
 
-def gait_feet_spd_perio(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_spd_perio(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Penalize foot speed during the support phase of the gait."""
     left_spd_support_mask = gait_clock(env.gait_phase[:, 0], env.phase_ratio[:, 0], delta_t)[1]
     right_spd_support_mask = gait_clock(env.gait_phase[:, 1], env.phase_ratio[:, 1], delta_t)[1]
@@ -283,7 +281,7 @@ def gait_feet_spd_perio(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor
     return left_spd_score + right_spd_score
 
 
-def gait_feet_frc_support_perio(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_frc_support_perio(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Reward that promotes proper support force during stance (support) phase."""
     left_frc_support_mask = gait_clock(env.gait_phase[:, 0], env.phase_ratio[:, 0], delta_t)[1]
     right_frc_support_mask = gait_clock(env.gait_phase[:, 1], env.phase_ratio[:, 1], delta_t)[1]
@@ -292,13 +290,13 @@ def gait_feet_frc_support_perio(env: Encos130Env, delta_t: float = 0.02) -> torc
     return left_frc_score + right_frc_score
 
 
-def joint_zero_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def joint_zero_l2(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize deviation from zero throughout both standing and walking."""
     asset: Articulation = env.scene[asset_cfg.name]
     return asset.data.joint_pos[:, asset_cfg.joint_ids].square().sum(dim=-1)
 
 
-def joint_zero_l2_standing(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def joint_zero_l2_standing(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize deviation from zero only when standing (command near zero)."""
     asset: Articulation = env.scene[asset_cfg.name]
     is_standing = (
@@ -307,7 +305,7 @@ def joint_zero_l2_standing(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg
     return asset.data.joint_pos[:, asset_cfg.joint_ids].square().sum(dim=-1) * is_standing
 
 
-def joint_zero_l2_walking(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def joint_zero_l2_walking(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize deviation from zero only when walking (command not near zero)."""
     asset: Articulation = env.scene[asset_cfg.name]
     is_walking = (
@@ -316,7 +314,7 @@ def joint_zero_l2_walking(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg)
     return asset.data.joint_pos[:, asset_cfg.joint_ids].square().sum(dim=-1) * is_walking
 
 
-def joint_zero_l1_standing(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def joint_zero_l1_standing(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """L1 penalize deviation from zero only when standing (command near zero)."""
     asset: Articulation = env.scene[asset_cfg.name]
     is_standing = (
@@ -325,7 +323,7 @@ def joint_zero_l1_standing(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg
     return torch.abs(asset.data.joint_pos[:, asset_cfg.joint_ids]).sum(dim=-1) * is_standing
 
 
-def joint_zero_l1_walking(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def joint_zero_l1_walking(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """L1 penalize deviation from zero only when walking (command not near zero)."""
     asset: Articulation = env.scene[asset_cfg.name]
     is_walking = (
@@ -334,7 +332,7 @@ def joint_zero_l1_walking(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg)
     return torch.abs(asset.data.joint_pos[:, asset_cfg.joint_ids]).sum(dim=-1) * is_walking
 
 
-def default_pose_standing_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def default_pose_standing_l2(env: BaseEnv | Hunter130Env, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """L2 penalty for deviating from default joint positions, only active when standing."""
     asset: Articulation = env.scene[asset_cfg.name]
     is_standing = (
@@ -344,7 +342,7 @@ def default_pose_standing_l2(env: BaseEnv | Encos130Env, asset_cfg: SceneEntityC
     return angle.square().sum(dim=-1) * is_standing
 
 
-def gait_feet_frc_perio_standing_gated(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_frc_perio_standing_gated(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Gait frc periodicity reward, disabled when standing."""
     is_walking = (
         torch.norm(env.command_generator.command[:, :2], dim=1) + torch.abs(env.command_generator.command[:, 2])
@@ -356,7 +354,7 @@ def gait_feet_frc_perio_standing_gated(env: Encos130Env, delta_t: float = 0.02) 
     return (left_frc_score + right_frc_score) * is_walking
 
 
-def gait_feet_spd_perio_standing_gated(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_spd_perio_standing_gated(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Gait spd periodicity reward, disabled when standing."""
     is_walking = (
         torch.norm(env.command_generator.command[:, :2], dim=1) + torch.abs(env.command_generator.command[:, 2])
@@ -368,7 +366,7 @@ def gait_feet_spd_perio_standing_gated(env: Encos130Env, delta_t: float = 0.02) 
     return (left_spd_score + right_spd_score) * is_walking
 
 
-def gait_feet_frc_support_perio_standing_gated(env: Encos130Env, delta_t: float = 0.02) -> torch.Tensor:
+def gait_feet_frc_support_perio_standing_gated(env: Hunter130Env, delta_t: float = 0.02) -> torch.Tensor:
     """Gait frc support periodicity reward, disabled when standing."""
     is_walking = (
         torch.norm(env.command_generator.command[:, :2], dim=1) + torch.abs(env.command_generator.command[:, 2])
@@ -378,3 +376,42 @@ def gait_feet_frc_support_perio_standing_gated(env: Encos130Env, delta_t: float 
     left_frc_score = left_frc_support_mask * (1 - torch.exp(-10 * torch.square(env.avg_feet_force_per_step[:, 0])))
     right_frc_score = right_frc_support_mask * (1 - torch.exp(-10 * torch.square(env.avg_feet_force_per_step[:, 1])))
     return (left_frc_score + right_frc_score) * is_walking
+
+
+def walking_mask(env):
+    command = env.command_generator.command
+    return (torch.linalg.vector_norm(command[:, :2], dim=1) + command[:, 2].abs()) >= 0.1
+
+
+def flat_orientation_standing_l2(env):
+    return flat_orientation_l2(env) * ~walking_mask(env)
+
+
+def track_lin_vel_xy_torso_frame_exp(env, std: float):
+    quat = math_utils.yaw_quat(env.robot.data.body_quat_w[:, env.torso_body_id])
+    velocity = math_utils.quat_apply_inverse(quat, env.robot.data.root_lin_vel_w)
+    error = (env.command_generator.command[:, :2] - velocity[:, :2]).square().sum(dim=1)
+    return torch.exp(-error / std**2)
+
+
+def track_torso_ang_vel_z_exp(env, std: float):
+    error = (env.command_generator.command[:, 2] - env.robot.data.body_ang_vel_w[:, env.torso_body_id, 2]).square()
+    return torch.exp(-error / std**2)
+
+
+def joint_velocity_walking_l2(env, asset_cfg: SceneEntityCfg):
+    return env.scene[asset_cfg.name].data.joint_vel[:, asset_cfg.joint_ids].square().sum(dim=1) * walking_mask(env)
+
+
+def hip_roll_inward_walking_l2(env, margin: float):
+    """Both hip roll axes are +X: negative left / positive right is inward."""
+    left = env.robot.data.joint_pos[:, env.left_leg_ids[1]]
+    right = env.robot.data.joint_pos[:, env.right_leg_ids[1]]
+    inward = (-left - margin).clamp(min=0).square() + (right - margin).clamp(min=0).square()
+    return inward * walking_mask(env)
+
+
+def torso_ang_vel_xy_l2(env):
+    quat = env.robot.data.body_quat_w[:, env.torso_body_id]
+    angular_velocity = math_utils.quat_apply_inverse(quat, env.robot.data.body_ang_vel_w[:, env.torso_body_id])
+    return angular_velocity[:, :2].square().sum(dim=1)

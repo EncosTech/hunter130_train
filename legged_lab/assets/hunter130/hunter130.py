@@ -1,4 +1,4 @@
-"""Configuration for Encos130 humanoid robot (23 DOF, with waist and ankle roll joints)."""
+"""Configuration for Hunter130 humanoid robot (23 DOF, with waist and ankle roll joints)."""
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -6,12 +6,12 @@ from isaaclab.assets.articulation import ArticulationCfg
 
 from legged_lab.assets import ISAAC_ASSET_DIR
 
-ENCOS130_CFG = ArticulationCfg(
+HUNTER130_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
-        asset_path=f"{ISAAC_ASSET_DIR}/encos130/urdf/encos130.urdf",
+        asset_path=f"{ISAAC_ASSET_DIR}/hunter130/urdf/hunter130.urdf",
         # Reuse the converted USD across launches.
-        usd_dir="/tmp/IsaacLab/encos130",
-        usd_file_name="encos130.usd",
+        usd_dir="/tmp/IsaacLab/hunter130",
+        usd_file_name="hunter130.usd",
         fix_base=False,
         merge_fixed_joints=True,
         # Simplify the high-resolution CAD collision meshes for parallel simulation.
@@ -36,7 +36,7 @@ ENCOS130_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        # The crouched default pose places the sole about 0.65 m below the pelvis.
+        # The crouched default pose places the sole about 0.663 m below the pelvis.
         pos=(0.0, 0.0, 0.7),
         joint_pos={
             # Left leg

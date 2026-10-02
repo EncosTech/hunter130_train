@@ -29,7 +29,7 @@ from isaaclab_rl.rsl_rl import (  # noqa:F401
 )
 
 import legged_lab.mdp as mdp
-from legged_lab.assets.encos130 import ENCOS130_CFG
+from legged_lab.assets.hunter130 import HUNTER130_CFG
 from legged_lab.envs.base.base_config import (
     ActionDelayCfg,
     BaseSceneCfg,
@@ -50,19 +50,30 @@ from legged_lab.envs.base.base_config import (
 
 @configclass
 class GaitCfg:
-    gait_air_ratio_l: float = 0.38
-    gait_air_ratio_r: float = 0.38
-    gait_phase_offset_l: float = 0.38
-    gait_phase_offset_r: float = 0.88
-    gait_cycle: float = 0.85
+    # Zero-pose hip-pitch to ankle-pitch vertical span from the URDF (metres).
+    # 0.015 + 0.0669 + 0.2531 + 0.3000; excludes ankle-roll offset and sole.
+    leg_length: float = 0.635
+    # Engineering starting values, not a natural/optimal gait period.
+    # Round 3.6 and 2.6 times sqrt(L/g) to the 0.02 s control timestep.
+    cycle_range: tuple[float, float] = (
+        round(3.6 * math.sqrt(leg_length / 9.81) / 0.02) * 0.02,
+        round(2.6 * math.sqrt(leg_length / 9.81) / 0.02) * 0.02,
+    )
+    speed_range: tuple[float, float] = (0.1, 1.0)
+    air_ratio_range: tuple[float, float] = (0.32, 0.40)
+    gait_phase_offset_l: float = 0.40
+    gait_phase_offset_r: float = 0.90
+    # Half the neutral foot spacing: equivalent tangential speed for turning.
+    turn_radius: float = 0.1221
+    smoothing_time: float = 0.25
 
 
 @configclass
-class Encos130RewardCfg:
-    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0, params={"std": 0.5})
-    track_ang_vel_z_exp = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"std": 0.5})
+class Hunter130RewardCfg:
+    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_torso_frame_exp, weight=1.0, params={"std": 0.5})
+    track_ang_vel_z_exp = RewTerm(func=mdp.track_torso_ang_vel_z_exp, weight=1.0, params={"std": 0.5})
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    ang_vel_xy_l2 = RewTerm(func=mdp.torso_ang_vel_xy_l2, weight=-0.05)
     energy = RewTerm(func=mdp.energy, weight=-1e-3)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
@@ -77,9 +88,10 @@ class Encos130RewardCfg:
         },
     )
     body_orientation_l2 = RewTerm(
-        func=mdp.body_orientation_l2, params={"asset_cfg": SceneEntityCfg("robot", body_names="pelvis")}, weight=-2.0
+        func=mdp.body_orientation_l2, params={"asset_cfg": SceneEntityCfg("robot", body_names="torso_link")}, weight=-2.0
     )
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    # Pelvis uprightness is retained only for standing.
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_standing_l2, weight=-1.0)
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     feet_slide = RewTerm(
         func=mdp.feet_slide,
@@ -152,6 +164,15 @@ class Encos130RewardCfg:
     ankle_torque = RewTerm(func=mdp.ankle_torque, weight=-0.0005)
     ankle_action = RewTerm(func=mdp.ankle_action, weight=-0.001)
     hip_roll_action = RewTerm(func=mdp.hip_roll_action, weight=-1.0, params={"leg_joint_index": 1})
+    hip_roll_position = RewTerm(
+        func=mdp.joint_zero_l2_walking, weight=-2.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_roll_joint"])},
+    )
+    hip_roll_velocity = RewTerm(
+        func=mdp.joint_velocity_walking_l2, weight=-0.05,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_roll_joint"])},
+    )
+    hip_roll_inward = RewTerm(func=mdp.hip_roll_inward_walking_l2, weight=-4.0, params={"margin": 0.03})
     hip_yaw_action = RewTerm(func=mdp.hip_yaw_action, weight=-1.0)
     # Keep the waist near zero — stronger constraint when standing.
     waist_zero_standing = RewTerm(
@@ -170,21 +191,21 @@ class Encos130RewardCfg:
         weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
-    feet_y_distance = RewTerm(func=mdp.feet_y_distance, weight=-2.0, params={"target_distance": 0.24})
+    feet_y_distance = RewTerm(func=mdp.feet_y_distance, weight=-2.0, params={"target_distance": 0.2442})
 
 
 
 @configclass
-class Encos130WalkFlatEnvCfg:
+class Hunter130WalkFlatEnvCfg:
     amp_motion_files_display = [
-        "legged_lab/envs/encos130/datasets/motion_vis/walk1_subject1_encos130_gmr.txt",
+        "legged_lab/envs/hunter130/datasets/motion_vis/walk1_subject1_hunter130_gmr.txt",
     ]
     device: str = "cuda:0"
     scene: BaseSceneCfg = BaseSceneCfg(
         max_episode_length_s=20.0,
         num_envs=4096,
         env_spacing=2.5,
-        robot=ENCOS130_CFG,
+        robot=HUNTER130_CFG,
         terrain_type="plane",
         terrain_generator=None,
         max_init_terrain_level=5,
@@ -205,7 +226,7 @@ class Encos130WalkFlatEnvCfg:
         terminate_contacts_body_names=[r"(?!(?:left|right)_ankle_roll_link$).*"],
         feet_body_names=[".*_ankle_roll_link"],
     )
-    reward = Encos130RewardCfg()
+    reward = Hunter130RewardCfg()
     gait = GaitCfg()
     normalization: NormalizationCfg = NormalizationCfg(
         obs_scales=ObsScalesCfg(
@@ -301,7 +322,7 @@ class Encos130WalkFlatEnvCfg:
 
 
 @configclass
-class Encos130WalkAgentCfg(RslRlOnPolicyRunnerCfg):
+class Hunter130WalkAgentCfg(RslRlOnPolicyRunnerCfg):
     seed = 42
     device = "cuda:0"
     num_steps_per_env = 24
@@ -336,11 +357,11 @@ class Encos130WalkAgentCfg(RslRlOnPolicyRunnerCfg):
     clip_actions = None
     save_interval = 100
     runner_class_name = "AmpOnPolicyRunner"
-    experiment_name = "encos130_walk"
+    experiment_name = "hunter130_walk"
     run_name = ""
     logger = "tensorboard"
-    neptune_project = "encos130"
-    wandb_project = "encos130"
+    neptune_project = "hunter130"
+    wandb_project = "hunter130"
     resume = False
     load_run = ".*"
     load_checkpoint = "model_.*.pt"
@@ -352,8 +373,8 @@ class Encos130WalkAgentCfg(RslRlOnPolicyRunnerCfg):
     # walk1/walk2 and 16_34/37_01 retain a prolonged toe-down pose in flight,
     # which the AMP discriminator otherwise transfers directly to the policy.
     amp_motion_files = [
-        "legged_lab/envs/encos130/datasets/motion_amp/walk1_subject1_encos130_gmr_part1.txt",
-        "legged_lab/envs/encos130/datasets/motion_amp/walk1_subject1_encos130_gmr_part2.txt",
+        "legged_lab/envs/hunter130/datasets/motion_amp/walk1_subject1_hunter130_gmr_part1.txt",
+        "legged_lab/envs/hunter130/datasets/motion_amp/walk1_subject1_hunter130_gmr_part2.txt",
     ]
     amp_num_preload_transitions = 200000
     amp_task_reward_lerp = 0.7

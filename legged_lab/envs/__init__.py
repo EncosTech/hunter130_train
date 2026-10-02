@@ -18,7 +18,7 @@
 
 from legged_lab.envs.base.base_env import BaseEnv
 from legged_lab.envs.base.base_env_config import BaseAgentCfg, BaseEnvCfg
-from legged_lab.envs.encos130 import Encos130Env, Encos130WalkAgentCfg, Encos130WalkFlatEnvCfg
+from legged_lab.envs.hunter130 import Hunter130Env, Hunter130WalkAgentCfg, Hunter130WalkFlatEnvCfg
 from legged_lab.utils.task_registry import task_registry
 
-task_registry.register("encos130_walk", Encos130Env, Encos130WalkFlatEnvCfg(), Encos130WalkAgentCfg())
+task_registry.register("hunter130_walk", Hunter130Env, Hunter130WalkFlatEnvCfg(), Hunter130WalkAgentCfg())

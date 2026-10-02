@@ -1,6 +1,6 @@
-# Encos130 Train
+# Hunter130 Train
 
-基于 [TienKung-Lab](https://github.com/Open-X-Humanoid/TienKung-Lab) 修改的 Encos130 人形机器人训练项目，使用 **Isaac Lab + PPO + AMP** 训练 23 自由度机器人的平地行走策略。
+基于 [TienKung-Lab](https://github.com/Open-X-Humanoid/TienKung-Lab) 修改的 Hunter130 人形机器人训练项目，使用 **Isaac Lab + PPO + AMP** 训练 23 自由度机器人的平地行走策略。
 
 ## 安装
 
@@ -19,16 +19,16 @@ python -m pip install scipy tensorboard
 以下命令均在仓库根目录执行：
 
 ```bash
-python legged_lab/scripts/train.py --task encos130_walk --headless --num_envs 4096
+python legged_lab/scripts/train.py --task hunter130_walk --headless --num_envs 4096
 ```
 
-显存不足时降低 `--num_envs`。日志和检查点保存在 `logs/encos130_walk/`。
+显存不足时降低 `--num_envs`。日志和检查点保存在 `logs/hunter130_walk/`。
 
 ```bash
-tensorboard --logdir logs/encos130_walk
+tensorboard --logdir logs/hunter130_walk
 ```
 
-训练参数、奖励和参考动作路径见 [walk_cfg.py](legged_lab/envs/encos130/walk_cfg.py)。
+训练参数、奖励和参考动作路径见 [walk_cfg.py](legged_lab/envs/hunter130/walk_cfg.py)。
 
 ## 回放与导出
 
@@ -36,7 +36,7 @@ tensorboard --logdir logs/encos130_walk
 
 ```bash
 python legged_lab/scripts/play.py \
-  --task encos130_walk --num_envs 1 \
+  --task hunter130_walk --num_envs 1 \
   --load_run '<运行目录名>' --checkpoint model_1000.pt
 ```
 

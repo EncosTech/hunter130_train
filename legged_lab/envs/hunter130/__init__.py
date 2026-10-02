@@ -1,0 +1,2 @@
+from legged_lab.envs.hunter130.hunter130_env import Hunter130Env
+from legged_lab.envs.hunter130.walk_cfg import Hunter130WalkAgentCfg, Hunter130WalkFlatEnvCfg
